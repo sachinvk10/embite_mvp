@@ -1,0 +1,10 @@
+dut:
+  name: raspberry_pi_5
+
+  connection:
+    type: ssh
+    host: "192.168.29.234"
+    port: 22
+    username: "pi"
+    authentication:
+      method: password
