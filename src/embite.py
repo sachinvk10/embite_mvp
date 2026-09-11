@@ -5,9 +5,18 @@ Main framework entry point.
 """
 
 import getpass
+
+from board_action.command_executor import CommandExecutor
 from board_action.shell_detector import ShellDetector
-from config.config_manager import ConfigManager
 from board_action.ssh_connection import SSHConnection
+
+from config.config_manager import ConfigManager
+
+from executor.action_registry import ActionRegistry
+from executor.test_executor import TestExecutor
+from executor.test_parser import TestParser
+
+from lib.system_info import SystemInfo
 
 
 def main():
@@ -43,28 +52,61 @@ def main():
 
     print("Connecting to DUT...")
 
-    connection.connect()
+    try:
+        connection.connect()
 
-    print("SSH connection established.")
+        print("SSH connection established.")
 
-    shell_detector = ShellDetector(connection)
-    shell_info = shell_detector.detect()
-    print(f"DUT OS: {shell_info['os']}")
-    print(f"DUT Shell: {shell_info['shell']}")
-    print(f"DUT Shell Path: {shell_info['shell_path']}")
+        # Detect DUT execution environment
+        shell_detector = ShellDetector(connection)
+        shell_info = shell_detector.detect()
 
-    output, error = connection.execute("uname -a")
+        print(f"DUT OS: {shell_info['os']}")
+        print(f"DUT Shell: {shell_info['shell']}")
+        print(f"DUT Shell Path: {shell_info['shell_path']}")
 
-    print("\nDUT Response:")
-    print(output)
+        # Generic DUT command execution layer
+        command_executor = CommandExecutor(connection)
 
-    if error:
-        print("\nDUT Error:")
-        print(error)
+        # Validation libraries
+        system_info = SystemInfo(command_executor)
 
-    connection.disconnect()
+        # DSL action mapping
+        action_registry = ActionRegistry(system_info)
 
-    print("\nSSH connection closed.")
+        # Parse .tst file
+        test_file = "tests/system/system_info.tst"
+
+        print(f"\nLoading test file: {test_file}")
+
+        parser = TestParser()
+        actions = parser.parse(test_file)
+
+        print(f"Actions: {actions}")
+
+        # Execute parsed DSL actions
+        test_executor = TestExecutor(action_registry)
+        results = test_executor.execute(actions)
+
+        print("\nTest Results")
+        print("-" * 50)
+
+        for result in results:
+            print(f"Action : {result['action']}")
+            print(f"Status : {result['status']}")
+
+            if result["status"] == "PASS":
+                print(f"Result : {result['result']}")
+            else:
+                print(f"Error  : {result['error']}")
+
+            print("-" * 50)
+
+    finally:
+        connection.disconnect()
+
+        print("\nSSH connection closed.")
+
     print("EmbITE MVP completed.")
 
 
