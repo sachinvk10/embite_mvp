@@ -28,3 +28,23 @@ DUT:
 ## Initial Milestone
 
 Windows → WSL2 → SSH → Raspberry Pi 5 → Linux shell → command execution
+
+Run EmbITE
+
+From the project root:
+
+python -m src.embite
+
+This is the standard way we currently run EmbITE.
+
+Important
+
+Use:
+
+python -m src.embite
+
+Not:
+
+python -m src.embite.py
+
+The -m option expects a Python module name, so .py is omitted.
