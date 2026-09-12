@@ -10,18 +10,14 @@ from pathlib import Path
 
 from board_actions.board_actions import BoardActions
 
-from config.config_manager import ConfigManager
-
 from utility.action_registry import ActionRegistry
+from utility.config_manager import ConfigManager
 from utility.executor import TestExecutor
+from utility.logger import RunLogger
 from utility.parser import TestParser
 
 
 def main():
-
-    print("=" * 50)
-    print("           EmbITE MVP")
-    print("=" * 50)
 
     # ==========================================================
     # PROJECT PATH
@@ -41,14 +37,13 @@ def main():
             f"Project directory not found: {project_path}"
         )
 
+    if not project_path.is_dir():
+        raise ValueError(
+            f"Project path is not a directory: {project_path}"
+        )
+
     project_config_file = (
         project_path / "config" / "project.yaml"
-    )
-
-    print(f"Project path: {project_path}")
-    print(
-        f"Loading project configuration: "
-        f"{project_config_file}"
     )
 
     # ==========================================================
@@ -90,12 +85,82 @@ def main():
         "type"
     )
 
-    print(f"Project: {project_name}")
-    print(f"DUT: {dut_config.get('name')}")
-    print(
-        f"Connection type: "
-        f"{connection_type}"
+    # ==========================================================
+    # REPORTING / LOGGING
+    # ==========================================================
+
+    reporting_config = config.get(
+        "reporting",
+        {}
     )
+
+    reporting_enabled = reporting_config.get(
+        "enabled",
+        False,
+    )
+
+    report_directory = (
+        project_path
+        / reporting_config.get(
+            "directory",
+            "report/runs",
+        )
+    )
+
+    logger = RunLogger(
+        project_name=project_name,
+        report_directory=report_directory,
+        enabled=reporting_enabled,
+        console=reporting_config.get(
+            "console",
+            True,
+        ),
+    )
+
+    # ==========================================================
+    # FRAMEWORK STARTUP
+    # ==========================================================
+
+    logger.info(
+        "=" * 50
+    )
+
+    logger.info(
+        "EmbITE MVP execution started"
+    )
+
+    logger.info(
+        "=" * 50
+    )
+
+    logger.info(
+        f"Project path: {project_path}"
+    )
+
+    logger.info(
+        f"Configuration: {project_config_file}"
+    )
+
+    logger.info(
+        f"Project: {project_name}"
+    )
+
+    logger.info(
+        f"DUT: {dut_config.get('name')}"
+    )
+
+    logger.info(
+        f"Platform: {dut_config.get('platform')}"
+    )
+
+    logger.info(
+        f"Connection type: {connection_type}"
+    )
+
+    if logger.log_file:
+        logger.info(
+            f"Report log: {logger.log_file}"
+        )
 
     # ==========================================================
     # PASSWORD
@@ -120,15 +185,26 @@ def main():
         password=password,
     )
 
-    print("Connecting to DUT...")
+    overall_status = "PASS"
+    connection_established = False
 
     try:
 
+        # ======================================================
+        # CONNECT TO DUT
+        # ======================================================
+
+        logger.info(
+            "Connecting to DUT"
+        )
+
         board.connect()
 
-        print(
+        connection_established = True
+
+        logger.info(
             f"{connection_type.upper()} "
-            f"connection established."
+            f"connection established"
         )
 
         # ======================================================
@@ -139,23 +215,33 @@ def main():
             board.detect_environment()
         )
 
-        print(
-            f"DUT OS: "
-            f"{environment.get('os')}"
+        dut_os = environment.get(
+            "os"
         )
 
-        print(
-            f"DUT Shell: "
-            f"{environment.get('shell')}"
+        dut_shell = environment.get(
+            "shell"
         )
 
-        print(
+        dut_shell_path = environment.get(
+            "shell_path"
+        )
+
+        logger.info(
+            f"DUT OS: {dut_os}"
+        )
+
+        logger.info(
+            f"DUT Shell: {dut_shell}"
+        )
+
+        logger.info(
             f"DUT Shell Path: "
-            f"{environment.get('shell_path')}"
+            f"{dut_shell_path}"
         )
 
         # ======================================================
-        # DSL FRAMEWORK
+        # DSL FRAMEWORK COMPONENTS
         # ======================================================
 
         action_registry = ActionRegistry(
@@ -169,20 +255,26 @@ def main():
         )
 
         # ======================================================
-        # EXECUTE PROJECT TEST FILES
+        # TEST FILE CONFIGURATION
         # ======================================================
 
         if not test_files:
-            print(
-                "\nNo test files configured "
-                "for this project."
+
+            logger.warning(
+                "No test files configured "
+                "for this project"
             )
-            return
 
-        print("\nConfigured test files:")
+        else:
 
-        for test_file in test_files:
-            print(f"  - {test_file}")
+            logger.info(
+                "Configured test files: "
+                + ", ".join(test_files)
+            )
+
+        # ======================================================
+        # EXECUTE PROJECT TEST FILES
+        # ======================================================
 
         for test_file in test_files:
 
@@ -191,76 +283,146 @@ def main():
             )
 
             if not test_file_path.exists():
+
+                overall_status = "FAIL"
+
                 raise FileNotFoundError(
                     f"Test file not found: "
                     f"{test_file_path}"
                 )
 
-            print("\n" + "=" * 50)
+            logger.info(
+                "-" * 50
+            )
 
-            print(
-                f"Executing Test File: "
+            logger.info(
+                f"Test file started: "
                 f"{test_file}"
             )
 
-            print("=" * 50)
+            # --------------------------------------------------
+            # PARSE TEST FILE
+            # --------------------------------------------------
 
             actions = parser.parse(
                 test_file_path
             )
 
-            print(
+            logger.info(
                 f"Actions: {actions}"
             )
+
+            # --------------------------------------------------
+            # EXECUTE ACTIONS
+            # --------------------------------------------------
 
             results = test_executor.execute(
                 actions
             )
 
-            print("\nTest Results")
-            print("-" * 50)
+            # --------------------------------------------------
+            # PROCESS RESULTS
+            # --------------------------------------------------
 
             for result in results:
 
-                print(
-                    f"Action : "
-                    f"{result['action']}"
+                action_name = result.get(
+                    "action"
                 )
 
-                print(
-                    f"Status : "
-                    f"{result['status']}"
+                action_status = result.get(
+                    "status"
                 )
 
-                if result["status"] == "PASS":
+                if action_status == "PASS":
 
-                    print(
-                        f"Result : "
-                        f"{result['result']}"
+                    action_result = result.get(
+                        "result"
+                    )
+
+                    logger.pass_result(
+                        f"{action_name} -> "
+                        f"{action_result}"
                     )
 
                 else:
 
-                    print(
-                        f"Error  : "
-                        f"{result['error']}"
+                    overall_status = "FAIL"
+
+                    action_error = result.get(
+                        "error"
                     )
 
-                print("-" * 50)
+                    logger.fail_result(
+                        f"{action_name} -> "
+                        f"{action_error}"
+                    )
+
+            logger.info(
+                f"Test file completed: "
+                f"{test_file}"
+            )
+
+            logger.info(
+                "-" * 50
+            )
+
+    except Exception as exc:
+
+        overall_status = "FAIL"
+
+        logger.exception(
+            "EmbITE execution failed",
+            exc,
+        )
+
+        raise
 
     finally:
 
-        board.disconnect()
+        # ======================================================
+        # DISCONNECT DUT
+        # ======================================================
 
-        print(
-            f"\n{connection_type.upper()} "
-            f"connection closed."
+        try:
+
+            board.disconnect()
+
+            if connection_established:
+
+                logger.info(
+                    f"{connection_type.upper()} "
+                    f"connection closed"
+                )
+
+        except Exception as disconnect_error:
+
+            overall_status = "FAIL"
+
+            logger.error(
+                "Failed to disconnect DUT: "
+                f"{disconnect_error}"
+            )
+
+        # ======================================================
+        # FINAL RUN STATUS
+        # ======================================================
+
+        logger.info(
+            f"Overall status: "
+            f"{overall_status}"
         )
 
-    print(
-        f"EmbITE project "
-        f"'{project_name}' completed."
-    )
+        logger.info(
+            f"EmbITE project "
+            f"'{project_name}' completed"
+        )
+
+        logger.info(
+            "=" * 50
+        )
+
+        logger.close()
 
 
 if __name__ == "__main__":

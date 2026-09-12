@@ -15,3 +15,7 @@ dut:
 
 tests:
   - tests/system.tst
+
+reporting:
+  enabled: true
+  directory: report/runs
