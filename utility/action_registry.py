@@ -11,6 +11,11 @@ class ActionRegistry:
     def __init__(self, system_info):
         self.actions = {
             "GET_HOSTNAME": system_info.get_hostname,
+            "GET_IP_ADDRESS": system_info.get_ip_address,
+            "GET_OS": system_info.get_os,
+            "GET_KERNEL": system_info.get_kernel,
+            "GET_ARCHITECTURE": system_info.get_architecture,
+            "GET_MEMORY": system_info.get_memory,
         }
 
     def get_action(self, action_name):

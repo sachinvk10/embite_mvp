@@ -1,0 +1,17 @@
+project:
+  name: rk3588
+  description: EmbITE MVP validation project for RK3588
+
+dut:
+  name: rk3588
+  platform: rk3588
+
+  connection:
+    type: ssh
+    host: <RK3588_IP_ADDRESS>
+    port: 22
+    username: <RK3588_USERNAME>
+    password_prompt: true
+
+tests:
+  - tests/system.tst
