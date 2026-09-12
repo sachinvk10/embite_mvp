@@ -8,9 +8,7 @@ import getpass
 import sys
 from pathlib import Path
 
-from board_action.command_executor import CommandExecutor
-from board_action.shell_detector import ShellDetector
-from board_action.ssh_connection import SSHConnection
+from board_actions.board_actions import BoardActions
 
 from config.config_manager import ConfigManager
 
@@ -18,17 +16,16 @@ from utility.action_registry import ActionRegistry
 from utility.executor import TestExecutor
 from utility.parser import TestParser
 
-from lib.system_info import SystemInfo
-
 
 def main():
+
     print("=" * 50)
     print("           EmbITE MVP")
     print("=" * 50)
 
-    # --------------------------------------------------
-    # Project path
-    # --------------------------------------------------
+    # ==========================================================
+    # PROJECT PATH
+    # ==========================================================
 
     if len(sys.argv) != 2:
         print(
@@ -49,18 +46,35 @@ def main():
     )
 
     print(f"Project path: {project_path}")
-    print(f"Loading project configuration: {project_config_file}")
+    print(
+        f"Loading project configuration: "
+        f"{project_config_file}"
+    )
 
-    # --------------------------------------------------
-    # Load Project Configuration
-    # --------------------------------------------------
+    # ==========================================================
+    # LOAD PROJECT CONFIGURATION
+    # ==========================================================
 
-    config_manager = ConfigManager(project_config_file)
+    config_manager = ConfigManager(
+        project_config_file
+    )
+
     config = config_manager.load()
 
-    project_config = config.get("project", {})
-    dut_config = config.get("dut", {})
-    test_files = config.get("tests", [])
+    project_config = config.get(
+        "project",
+        {}
+    )
+
+    dut_config = config.get(
+        "dut",
+        {}
+    )
+
+    test_files = config.get(
+        "tests",
+        []
+    )
 
     project_name = project_config.get(
         "name",
@@ -69,100 +83,83 @@ def main():
 
     connection_config = dut_config.get(
         "connection",
-        {},
+        {}
+    )
+
+    connection_type = connection_config.get(
+        "type"
     )
 
     print(f"Project: {project_name}")
     print(f"DUT: {dut_config.get('name')}")
     print(
         f"Connection type: "
-        f"{connection_config.get('type')}"
+        f"{connection_type}"
     )
 
-    # --------------------------------------------------
-    # Validate Connection Type
-    # --------------------------------------------------
-
-    if connection_config.get("type") != "ssh":
-        raise ValueError(
-            f"Unsupported connection type: "
-            f"{connection_config.get('type')}"
-        )
-
-    # --------------------------------------------------
-    # Credentials
-    # --------------------------------------------------
+    # ==========================================================
+    # PASSWORD
+    # ==========================================================
 
     password = None
 
     if connection_config.get(
         "password_prompt",
-        True,
+        False,
     ):
         password = getpass.getpass(
             "Enter password: "
         )
 
-    # --------------------------------------------------
-    # Create Connection
-    # --------------------------------------------------
+    # ==========================================================
+    # BOARD ACTIONS
+    # ==========================================================
 
-    connection = SSHConnection(
-        host=connection_config.get("host"),
-        port=connection_config.get(
-            "port",
-            22,
-        ),
-        username=connection_config.get(
-            "username"
-        ),
+    board = BoardActions(
+        dut_config=dut_config,
         password=password,
     )
 
     print("Connecting to DUT...")
 
     try:
-        connection.connect()
 
-        print("SSH connection established.")
+        board.connect()
 
-        # ----------------------------------------------
-        # Detect DUT Environment
-        # ----------------------------------------------
-
-        shell_detector = ShellDetector(
-            connection
+        print(
+            f"{connection_type.upper()} "
+            f"connection established."
         )
 
-        shell_info = shell_detector.detect()
+        # ======================================================
+        # DETECT DUT ENVIRONMENT
+        # ======================================================
+
+        environment = (
+            board.detect_environment()
+        )
 
         print(
             f"DUT OS: "
-            f"{shell_info['os']}"
+            f"{environment.get('os')}"
         )
+
         print(
             f"DUT Shell: "
-            f"{shell_info['shell']}"
+            f"{environment.get('shell')}"
         )
+
         print(
             f"DUT Shell Path: "
-            f"{shell_info['shell_path']}"
+            f"{environment.get('shell_path')}"
         )
 
-        # ----------------------------------------------
-        # Framework Components
-        # ----------------------------------------------
-
-        command_executor = CommandExecutor(
-            connection
-        )
-
-        system_info = SystemInfo(
-            command_executor
-        )
+        # ======================================================
+        # DSL FRAMEWORK
+        # ======================================================
 
         action_registry = ActionRegistry(
-            system_info
+            board
         )
 
         parser = TestParser()
@@ -171,9 +168,9 @@ def main():
             action_registry
         )
 
-        # ----------------------------------------------
-        # Execute Project Test Files
-        # ----------------------------------------------
+        # ======================================================
+        # EXECUTE PROJECT TEST FILES
+        # ======================================================
 
         if not test_files:
             print(
@@ -200,10 +197,12 @@ def main():
                 )
 
             print("\n" + "=" * 50)
+
             print(
                 f"Executing Test File: "
                 f"{test_file}"
             )
+
             print("=" * 50)
 
             actions = parser.parse(
@@ -234,11 +233,14 @@ def main():
                 )
 
                 if result["status"] == "PASS":
+
                     print(
                         f"Result : "
                         f"{result['result']}"
                     )
+
                 else:
+
                     print(
                         f"Error  : "
                         f"{result['error']}"
@@ -248,10 +250,11 @@ def main():
 
     finally:
 
-        connection.disconnect()
+        board.disconnect()
 
         print(
-            "\nSSH connection closed."
+            f"\n{connection_type.upper()} "
+            f"connection closed."
         )
 
     print(

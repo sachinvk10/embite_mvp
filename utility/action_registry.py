@@ -1,27 +1,19 @@
-"""
-EmbITE Action Registry
-
-Maps DSL actions to their implementation functions.
-"""
-
-
 class ActionRegistry:
-    """Registry for EmbITE DSL actions."""
+    """Maps EmbITE DSL actions to framework implementation methods."""
 
-    def __init__(self, system_info):
+    def __init__(self, board_actions):
+        self.board_actions = board_actions
+
         self.actions = {
-            "GET_HOSTNAME": system_info.get_hostname,
-            "GET_IP_ADDRESS": system_info.get_ip_address,
-            "GET_OS": system_info.get_os,
-            "GET_KERNEL": system_info.get_kernel,
-            "GET_ARCHITECTURE": system_info.get_architecture,
-            "GET_MEMORY": system_info.get_memory,
+            "GET_HOSTNAME": self.board_actions.get_hostname,
+            "GET_IP_ADDRESS": self.board_actions.get_ip_address,
+            "GET_OS": self.board_actions.get_os,
+            "GET_KERNEL": self.board_actions.get_kernel,
+            "GET_ARCHITECTURE": self.board_actions.get_architecture,
+            "GET_MEMORY": self.board_actions.get_memory,
         }
 
     def get_action(self, action_name):
-        """
-        Return the callable associated with an action name.
-        """
         action = self.actions.get(action_name)
 
         if action is None:
