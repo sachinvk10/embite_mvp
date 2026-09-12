@@ -5,109 +5,424 @@ Main framework entry point.
 """
 
 import getpass
+import sys
+from pathlib import Path
 
-from board_action.command_executor import CommandExecutor
-from board_action.shell_detector import ShellDetector
-from board_action.ssh_connection import SSHConnection
+from board_actions.board_actions import BoardActions
 
-from config.config_manager import ConfigManager
-
-from executor.action_registry import ActionRegistry
-from executor.test_executor import TestExecutor
-from executor.test_parser import TestParser
-
-from lib.system_info import SystemInfo
+from utility.action_registry import ActionRegistry
+from utility.config_manager import ConfigManager
+from utility.executor import TestExecutor
+from utility.logger import RunLogger
+from utility.parser import TestParser
 
 
 def main():
-    print("=" * 50)
-    print("           EmbITE MVP")
-    print("=" * 50)
 
-    print("Loading configuration...")
+    # ==========================================================
+    # PROJECT PATH
+    # ==========================================================
 
-    config_manager = ConfigManager("config/dut_config.yaml")
-    config_manager.load()
+    if len(sys.argv) != 2:
+        print(
+            "Usage: python -m src.embite "
+            "projects/<project_name>"
+        )
+        sys.exit(1)
 
-    dut_config = config_manager.get_dut_config()
-    connection_config = dut_config.get("connection", {})
+    project_path = Path(sys.argv[1])
 
-    print(f"DUT: {dut_config.get('name')}")
-    print(f"Connection type: {connection_config.get('type')}")
-
-    if connection_config.get("type") != "ssh":
-        raise ValueError(
-            f"Unsupported connection type: "
-            f"{connection_config.get('type')}"
+    if not project_path.exists():
+        raise FileNotFoundError(
+            f"Project directory not found: {project_path}"
         )
 
-    password = getpass.getpass("Enter password: ")
+    if not project_path.is_dir():
+        raise ValueError(
+            f"Project path is not a directory: {project_path}"
+        )
 
-    connection = SSHConnection(
-        host=connection_config.get("host"),
-        port=connection_config.get("port", 22),
-        username=connection_config.get("username"),
+    project_config_file = (
+        project_path / "config" / "project.yaml"
+    )
+
+    # ==========================================================
+    # LOAD PROJECT CONFIGURATION
+    # ==========================================================
+
+    config_manager = ConfigManager(
+        project_config_file
+    )
+
+    config = config_manager.load()
+
+    project_config = config.get(
+        "project",
+        {}
+    )
+
+    dut_config = config.get(
+        "dut",
+        {}
+    )
+
+    test_files = config.get(
+        "tests",
+        []
+    )
+
+    project_name = project_config.get(
+        "name",
+        project_path.name,
+    )
+
+    connection_config = dut_config.get(
+        "connection",
+        {}
+    )
+
+    connection_type = connection_config.get(
+        "type"
+    )
+
+    # ==========================================================
+    # REPORTING / LOGGING
+    # ==========================================================
+
+    reporting_config = config.get(
+        "reporting",
+        {}
+    )
+
+    reporting_enabled = reporting_config.get(
+        "enabled",
+        False,
+    )
+
+    report_directory = (
+        project_path
+        / reporting_config.get(
+            "directory",
+            "report/runs",
+        )
+    )
+
+    logger = RunLogger(
+        project_name=project_name,
+        report_directory=report_directory,
+        enabled=reporting_enabled,
+        console=reporting_config.get(
+            "console",
+            True,
+        ),
+    )
+
+    # ==========================================================
+    # FRAMEWORK STARTUP
+    # ==========================================================
+
+    logger.info(
+        "=" * 50
+    )
+
+    logger.info(
+        "EmbITE MVP execution started"
+    )
+
+    logger.info(
+        "=" * 50
+    )
+
+    logger.info(
+        f"Project path: {project_path}"
+    )
+
+    logger.info(
+        f"Configuration: {project_config_file}"
+    )
+
+    logger.info(
+        f"Project: {project_name}"
+    )
+
+    logger.info(
+        f"DUT: {dut_config.get('name')}"
+    )
+
+    logger.info(
+        f"Platform: {dut_config.get('platform')}"
+    )
+
+    logger.info(
+        f"Connection type: {connection_type}"
+    )
+
+    if logger.log_file:
+        logger.info(
+            f"Report log: {logger.log_file}"
+        )
+
+    # ==========================================================
+    # PASSWORD
+    # ==========================================================
+
+    password = None
+
+    if connection_config.get(
+        "password_prompt",
+        False,
+    ):
+        password = getpass.getpass(
+            "Enter password: "
+        )
+
+    # ==========================================================
+    # BOARD ACTIONS
+    # ==========================================================
+
+    board = BoardActions(
+        dut_config=dut_config,
         password=password,
     )
 
-    print("Connecting to DUT...")
+    overall_status = "PASS"
+    connection_established = False
 
     try:
-        connection.connect()
 
-        print("SSH connection established.")
+        # ======================================================
+        # CONNECT TO DUT
+        # ======================================================
 
-        # Detect DUT execution environment
-        shell_detector = ShellDetector(connection)
-        shell_info = shell_detector.detect()
+        logger.info(
+            "Connecting to DUT"
+        )
 
-        print(f"DUT OS: {shell_info['os']}")
-        print(f"DUT Shell: {shell_info['shell']}")
-        print(f"DUT Shell Path: {shell_info['shell_path']}")
+        board.connect()
 
-        # Generic DUT command execution layer
-        command_executor = CommandExecutor(connection)
+        connection_established = True
 
-        # Validation libraries
-        system_info = SystemInfo(command_executor)
+        logger.info(
+            f"{connection_type.upper()} "
+            f"connection established"
+        )
 
-        # DSL action mapping
-        action_registry = ActionRegistry(system_info)
+        # ======================================================
+        # DETECT DUT ENVIRONMENT
+        # ======================================================
 
-        # Parse .tst file
-        test_file = "tests/system/system_info.tst"
+        environment = (
+            board.detect_environment()
+        )
 
-        print(f"\nLoading test file: {test_file}")
+        dut_os = environment.get(
+            "os"
+        )
+
+        dut_shell = environment.get(
+            "shell"
+        )
+
+        dut_shell_path = environment.get(
+            "shell_path"
+        )
+
+        logger.info(
+            f"DUT OS: {dut_os}"
+        )
+
+        logger.info(
+            f"DUT Shell: {dut_shell}"
+        )
+
+        logger.info(
+            f"DUT Shell Path: "
+            f"{dut_shell_path}"
+        )
+
+        # ======================================================
+        # DSL FRAMEWORK COMPONENTS
+        # ======================================================
+
+        action_registry = ActionRegistry(
+            board
+        )
 
         parser = TestParser()
-        actions = parser.parse(test_file)
 
-        print(f"Actions: {actions}")
+        test_executor = TestExecutor(
+            action_registry
+        )
 
-        # Execute parsed DSL actions
-        test_executor = TestExecutor(action_registry)
-        results = test_executor.execute(actions)
+        # ======================================================
+        # TEST FILE CONFIGURATION
+        # ======================================================
 
-        print("\nTest Results")
-        print("-" * 50)
+        if not test_files:
 
-        for result in results:
-            print(f"Action : {result['action']}")
-            print(f"Status : {result['status']}")
+            logger.warning(
+                "No test files configured "
+                "for this project"
+            )
 
-            if result["status"] == "PASS":
-                print(f"Result : {result['result']}")
-            else:
-                print(f"Error  : {result['error']}")
+        else:
 
-            print("-" * 50)
+            logger.info(
+                "Configured test files: "
+                + ", ".join(test_files)
+            )
+
+        # ======================================================
+        # EXECUTE PROJECT TEST FILES
+        # ======================================================
+
+        for test_file in test_files:
+
+            test_file_path = (
+                project_path / test_file
+            )
+
+            if not test_file_path.exists():
+
+                overall_status = "FAIL"
+
+                raise FileNotFoundError(
+                    f"Test file not found: "
+                    f"{test_file_path}"
+                )
+
+            logger.info(
+                "-" * 50
+            )
+
+            logger.info(
+                f"Test file started: "
+                f"{test_file}"
+            )
+
+            # --------------------------------------------------
+            # PARSE TEST FILE
+            # --------------------------------------------------
+
+            actions = parser.parse(
+                test_file_path
+            )
+
+            logger.info(
+                f"Actions: {actions}"
+            )
+
+            # --------------------------------------------------
+            # EXECUTE ACTIONS
+            # --------------------------------------------------
+
+            results = test_executor.execute(
+                actions
+            )
+
+            # --------------------------------------------------
+            # PROCESS RESULTS
+            # --------------------------------------------------
+
+            for result in results:
+
+                action_name = result.get(
+                    "action"
+                )
+
+                action_status = result.get(
+                    "status"
+                )
+
+                if action_status == "PASS":
+
+                    action_result = result.get(
+                        "result"
+                    )
+
+                    logger.pass_result(
+                        f"{action_name} -> "
+                        f"{action_result}"
+                    )
+
+                else:
+
+                    overall_status = "FAIL"
+
+                    action_error = result.get(
+                        "error"
+                    )
+
+                    logger.fail_result(
+                        f"{action_name} -> "
+                        f"{action_error}"
+                    )
+
+            logger.info(
+                f"Test file completed: "
+                f"{test_file}"
+            )
+
+            logger.info(
+                "-" * 50
+            )
+
+    except Exception as exc:
+
+        overall_status = "FAIL"
+
+        logger.exception(
+            "EmbITE execution failed",
+            exc,
+        )
+
+        raise
 
     finally:
-        connection.disconnect()
 
-        print("\nSSH connection closed.")
+        # ======================================================
+        # DISCONNECT DUT
+        # ======================================================
 
-    print("EmbITE MVP completed.")
+        try:
+
+            board.disconnect()
+
+            if connection_established:
+
+                logger.info(
+                    f"{connection_type.upper()} "
+                    f"connection closed"
+                )
+
+        except Exception as disconnect_error:
+
+            overall_status = "FAIL"
+
+            logger.error(
+                "Failed to disconnect DUT: "
+                f"{disconnect_error}"
+            )
+
+        # ======================================================
+        # FINAL RUN STATUS
+        # ======================================================
+
+        logger.info(
+            f"Overall status: "
+            f"{overall_status}"
+        )
+
+        logger.info(
+            f"EmbITE project "
+            f"'{project_name}' completed"
+        )
+
+        logger.info(
+            "=" * 50
+        )
+
+        logger.close()
 
 
 if __name__ == "__main__":
