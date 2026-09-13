@@ -1,17 +1,207 @@
+# ============================================================
+# EmbITE MVP - RK3588 Project Configuration
+# ============================================================
+#
+# File:
+#   projects/rk3588/config/project.yaml
+#
+# Purpose:
+#   Defines:
+#     - Project information
+#     - DUT connection information
+#     - Test files to execute
+#     - Report/log configuration
+#     - Storage safety policy
+#
+# Important:
+#   Dynamic runtime values such as:
+#
+#       USB port numbers
+#       /dev/sda
+#       /dev/sdb
+#       partition nodes
+#       mount points
+#       filesystem type
+#       partition size
+#
+#   are NOT configured here.
+#
+#   They are discovered or provided through DSL APIs.
+#
+# Example:
+#
+#   USB_DETECT
+#   USB_SELECT 1 2
+#
+#   PARTITION_CREATE gpt 1 2G
+#   FILESYSTEM_CREATE ext4
+#
+#   STORAGE_MOUNT
+#
+# ============================================================
+
+
+# ============================================================
+# PROJECT
+# ============================================================
+
 project:
+
+  # Unique project name.
+  #
+  # Used by:
+  #   - EmbITE logs
+  #   - Report filenames
+  #   - Runtime identification
+  #
   name: rk3588
-  description: EmbITE MVP validation project for RK3588
+
+  description: EmbITE MVP validation project for rk3588
+
+
+# ============================================================
+# DEVICE UNDER TEST
+# ============================================================
 
 dut:
+
+  # Human-readable DUT name.
   name: rk3588
+
+  # Platform identifier.
   platform: rk3588
 
+
+  # ----------------------------------------------------------
+  # DUT CONNECTION
+  # ----------------------------------------------------------
+
   connection:
+
+    # Current supported connection:
+    #
+    #   ssh
+    #
+    # Serial support can be added later in BoardActions.
     type: ssh
-    host: <RK3588_IP_ADDRESS>
+
+    # Raspberry Pi 5 IP address.
+    host: 192.168.29.210
+
+    # SSH port.
     port: 22
-    username: <RK3588_USERNAME>
+
+    # DUT login username.
+    username: firefly
+
+    # Do not store DUT password in project.yaml.
+    #
+    # When true, EmbITE asks for the password at runtime.
     password_prompt: true
 
+
+# ============================================================
+# TEST SUITES
+# ============================================================
+#
+# Test files are executed in this order.
+#
+# Paths are relative to:
+#
+#   projects/raspberry_pi5/
+#
+# Example:
+#
+#   projects/raspberry_pi5/tests/system.tst
+#   projects/raspberry_pi5/tests/USB.tst
+#
+# ============================================================
+
 tests:
-  - tests/system.tst
+
+  - tests/USB.tst
+
+
+# ============================================================
+# REPORTING
+# ============================================================
+
+reporting:
+
+  # Enable per-run execution logs.
+  enabled: true
+
+  # Report directory relative to the project directory.
+  #
+  # EmbITE creates this directory automatically.
+  #
+  # Do NOT manually create it.
+  directory: report/runs
+
+  # Show the same execution information on console.
+  console: true
+
+
+# ============================================================
+# STORAGE SAFETY
+# ============================================================
+#
+# This is a PROJECT POLICY.
+#
+# Storage operation parameters are supplied through the DSL.
+#
+# Example:
+#
+#   PARTITION_CREATE gpt 1 2G
+#   FILESYSTEM_CREATE ext4
+#
+#
+# allow_overwrite: false
+#
+#   Existing partitions / filesystems / data detected:
+#
+#       BLOCK operation
+#
+#   EmbITE will NOT:
+#
+#       - unmount existing user filesystems
+#       - wipe signatures
+#       - recreate partition tables
+#       - create destructive partitions
+#       - format existing user partitions
+#
+#
+# allow_overwrite: true
+#
+#   Explicit user authorization is provided.
+#
+#   For selected USB devices only, EmbITE may:
+#
+#       - sync
+#       - unmount existing filesystems
+#       - verify unmount
+#       - wipe existing signatures
+#       - recreate partition table
+#       - create requested partitions
+#       - create requested filesystems
+#
+# IMPORTANT:
+#
+#   Even when true, EmbITE can operate ONLY on devices associated
+#   with USB ports selected using:
+#
+#       USB_SELECT
+#
+#   Unrelated system storage must never be modified.
+#
+# ============================================================
+
+storage:
+
+  safety:
+
+    # Safe default.
+    #
+    # Change to true only when intentionally running
+    # destructive storage validation on disposable/test media.
+    allow_overwrite: false
